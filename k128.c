@@ -16,7 +16,6 @@
 #define SIZE_32 32
 
 // SBoxes S1, S2, S3 e S4
-
 uint32_t S1[] = {
     0x30fb40d4, 0x9fa0ff0b, 0x6beccd2f, 0x3f258c7a, 0x1e213f2f, 0x9c004dd3, 0x6003e540, 0xcf9fc949,
     0xbfd4af27, 0x88bbbdb5, 0xe2034090, 0x98d09675, 0x6e63a0e0, 0x15c361d2, 0xc2e7661d, 0x22d4ff8e,
@@ -172,11 +171,13 @@ void xor128(uint32_t a[4], uint32_t b[4], uint32_t out[4]) {
 }
 
 uint32_t rotateLeft(uint32_t value, uint32_t numBits, uint32_t size) {
-    return (value << numBits) | (value >> (size - numBits));
+    uint32_t mask = 0xffffffff >> (SIZE_32 - size);
+    return mask & ((value << (numBits % size)) | (value >> (size - (numBits % size))));
 }
 
 uint32_t rotateRight(uint32_t value, uint32_t numBits, uint32_t size) {
-    return (value >> numBits) | (value << (size - numBits));
+    uint32_t mask = 0xffffffff >> (SIZE_32 - size);
+    return mask & ( (value >> (numBits % size)) | (value << (size - (numBits % size))) );
 }
 
 uint32_t f1(uint32_t X, uint32_t K5, uint32_t K32) {
@@ -236,15 +237,26 @@ uint32_t f3(uint32_t X, uint32_t K5, uint32_t K32) {
 
 }
 
-void KR5() {
+void getSubkeys(uint32_t intermediateKey[4], uint32_t KR5[4], uint32_t KM32[4]) {
+    uint32_t mask = 0xffffffff >> (SIZE_32 - SIZE_5);
 
-    KR5(i, 0) = 5BitsDaDireita(X); KR5(i, 1) = 5BitsDaDireita(Y );
-    KR5(i, 2) = 5BitsDaDireita(Z); KR5(i, 3) = 5BitsDaDireita(W );
+    // Divide a chave K(i) = X||Y||Z||W
+    uint32_t X = intermediateKey[0];
+    uint32_t Y = intermediateKey[1];
+    uint32_t Z = intermediateKey[2];
+    uint32_t W = intermediateKey[3];
 
-}
+    // usa máscara para pegar 5 bits da direita
+    KR5[0] = mask & X;
+    KR5[1] = mask & Y;
+    KR5[2] = mask & Z;
+    KR5[3] = mask & W;
 
-void KR32() {
-    KM32(i, 0) = W ; KM32(i, 1) = Z; KM32(i, 2) = Y ; KM32(i, 3) = X;
+    // Atribui valores de KM32
+    KM32[0] = W;
+    KM32[1] = Z;
+    KM32[2] = Y;
+    KM32[3] = X;
 }
 
 /**
@@ -256,7 +268,7 @@ void KR32() {
  */
 void generateIntermediateKey(uint32_t previousKey[4], uint32_t i, uint32_t currentKey[4]) {
 
-    uint32_t ConstR = 0x13; // 5 bits (10011)
+    uint32_t ConstR = 0x00000013; // 5 bits (10011)
     uint32_t ConstM = 0xcb3725f7; // 32 bits
 
     // Divide chave K(i-1) em X||Y||Z||W
@@ -318,10 +330,10 @@ void generateKeys(uint32_t key[4], uint32_t intermediateKeys[NUM_ROUNDS][4]) {
  *
  * @param[in] input Entrada X de 128 bits (4x32).
  * @param[in] round Inteiro referente à iteração atual (round).
- * @param[in] key Chave principal K de 128 bits (4x32).
+ * @param[in] intermediateKey Chave intermediaria K(i) de 128 bits (4x32).
  * @param[out] output Saída Y de 128 bits (4x32).
  */
-void k128_encrypt(uint32_t input[4], uint32_t round, uint32_t key[4], uint32_t output[4]) {
+void k128_encrypt(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4], uint32_t output[4]) {
 
     // Divide entrada em 4 partes de 32 bits: A||B||C||D
     uint32_t A = input[0];
@@ -329,11 +341,10 @@ void k128_encrypt(uint32_t input[4], uint32_t round, uint32_t key[4], uint32_t o
     uint32_t C = input[2];
     uint32_t D = input[3];
 
-    // Usando a chave principal, gera KR5 e KM32 para a iteração (round) atual
+    // Usando a chave K(i), obtém KR5(i,j) e KM32(i,j)
     uint32_t KR5[4];
     uint32_t KM32[4];
-    getKR5(key, round, KR5);
-    getKM32(key, round, KM32);
+    getSubkeys(intermediateKey, KR5, KM32);
 
     C = C ^ f2(D, KR5[0], KM32[0]);
     B = B ^ f1(C, KR5[1], KM32[1]);
@@ -348,13 +359,13 @@ void k128_encrypt(uint32_t input[4], uint32_t round, uint32_t key[4], uint32_t o
 }
 
 
-void encrypt(char* input, char* output, char* key) {
+void encrypt(uint32_t* input, uint32_t* output, uint32_t* key) {
     // input, output and key must have 128 bits blocks
 
     // split input blocks
 
-    uint32_t K[NUM_ROUNDS][4];
-    generateKeys(key, K);
+    uint32_t intermediateKeys[NUM_ROUNDS][4];
+    generateKeys(key, intermediateKeys);
 
     // CBC ?
     for (int i = 0; i < numBlocks; i++) {
@@ -363,9 +374,6 @@ void encrypt(char* input, char* output, char* key) {
         }
         output[i] = outputBlock;
     }
-
-
-
 }
 
 void decrypt(char* input, char* output, char* key) {
