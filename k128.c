@@ -16,7 +16,7 @@
 #define SIZE_32 32
 
 // SBoxes S1, S2, S3 e S4
-uint32_t S1[] = {
+uint32_t S1[256] = {
     0x30fb40d4, 0x9fa0ff0b, 0x6beccd2f, 0x3f258c7a, 0x1e213f2f, 0x9c004dd3, 0x6003e540, 0xcf9fc949,
     0xbfd4af27, 0x88bbbdb5, 0xe2034090, 0x98d09675, 0x6e63a0e0, 0x15c361d2, 0xc2e7661d, 0x22d4ff8e,
     0x28683b6f, 0xc07fd059, 0xff2379c8, 0x775f50e2, 0x43c340d3, 0xdf2f8656, 0x887ca41a, 0xa2d2bd2d,
@@ -51,7 +51,7 @@ uint32_t S1[] = {
     0x1a69e783, 0x02cc4843, 0xa2f7c579, 0x429ef47d, 0x427b169c, 0x5ac9f049, 0xdd8f0f00, 0x5c8165bf,
 };
 
-uint32_t S2[] = {
+uint32_t S2[256] = {
     0x1f201094, 0xef0ba75b, 0x69e3cf7e, 0x393f4380, 0xfe61cf7a, 0xeec5207a, 0x55889c94, 0x72fc0651,
     0xada7ef79, 0x4e1d7235, 0xd55a63ce, 0xde0436ba, 0x99c430ef, 0x5f0c0794, 0x18dcdb7d, 0xa1d6eff3,
     0xa0b52f7b, 0x59e83605, 0xee15b094, 0xe9ffd909, 0xdc440086, 0xef944459, 0xba83ccb3, 0xe0c3cdfb,
@@ -86,7 +86,7 @@ uint32_t S2[] = {
     0x43d79572, 0x7e6dd07c, 0x06dfdf1e, 0x6c6cc4ef, 0x7160a539, 0x73bfbe70, 0x83877605, 0x4523ecf1,
 };
 
-uint32_t S3[] = {
+uint32_t S3[256] = {
     0x8defc240, 0x25fa5d9f, 0xeb903dbf, 0xe810c907, 0x47607fff, 0x369fe44b, 0x8c1fc644, 0xaececa90,
     0xbeb1f9bf, 0xeefbcaea, 0xe8cf1950, 0x51df07ae, 0x920e8806, 0xf0ad0548, 0xe13c8d83, 0x927010d5,
     0x11107d9f, 0x07647db9, 0xb2e3e4d4, 0x3d4f285e, 0xb9afa820, 0xfade82e0, 0xa067268b, 0x8272792e,
@@ -121,7 +121,7 @@ uint32_t S3[] = {
     0xf7baefd5, 0x4142ed9c, 0xa4315c11, 0x83323ec5, 0xdfef4636, 0xa133c501, 0xe9d3531c, 0xee353783,
 };
 
-uint32_t S4[] = {
+uint32_t S4[256] = {
     0x9db30420, 0x1fb6e9de, 0xa7be7bef, 0xd273a298, 0x4a4f7bdb, 0x64ad8c57, 0x85510443, 0xfa020ed1,
     0x7e287aff, 0xe60fb663, 0x095f35a1, 0x79ebf120, 0xfd059d43, 0x6497b7b1, 0xf3641f63, 0x241e4adf,
     0x28147f5f, 0x4fa2b8cd, 0xc9430040, 0x0cc32220, 0xfdd30b30, 0xc0a5374f, 0x1d2d00d9, 0x24147b15,
@@ -170,6 +170,18 @@ void xor128(uint32_t a[4], uint32_t b[4], uint32_t out[4]) {
     out[3] = a[3] ^ b[3];
 }
 
+uint32_t sum32bits(uint32_t a, uint32_t b) {
+    uint64_t temp = (uint64_t) (a + b) % (uint64_t) pow(2, 32);
+    uint32_t result = (uint32_t) (0xffffffff & temp);
+    return result;
+}
+
+uint32_t sub32bits(uint32_t a, uint32_t b) {
+    uint64_t temp = (uint64_t) (a - b) % (uint64_t) pow(2, 32);
+    uint32_t result = (uint32_t) (0xffffffff & temp);
+    return result;
+}
+
 uint32_t rotateLeft(uint32_t value, uint32_t numBits, uint32_t size) {
     uint32_t mask = 0xffffffff >> (SIZE_32 - size);
     return mask & ((value << (numBits % size)) | (value >> (size - (numBits % size))));
@@ -180,61 +192,61 @@ uint32_t rotateRight(uint32_t value, uint32_t numBits, uint32_t size) {
     return mask & ( (value >> (numBits % size)) | (value << (size - (numBits % size))) );
 }
 
+/**
+ * Calcula o valor Y
+ *
+ * Entrada: X de 32 bits, K5 de 5 bits e K32 de 32 bits
+ * Saída: Y de 32 bits
+ */
 uint32_t f1(uint32_t X, uint32_t K5, uint32_t K32) {
-    /**
-     * Calcula o valor Y
-     *
-     * Entrada: X de 32 bits, K5 de 5 bits e K32 de 32 bits
-     * Saída: Y de 32 bits
-     */
 
     // Calcular I
-    uint32_t I = ((K32 XOR X) mod 2^32 << K5);
+    uint32_t I = rotateLeft((K32 ^ X), K5, SIZE_32);
 
-    // Dividir I
-    I1, I2, I3, I4 = split(I);
+    // Dividir I = I1||I2||I3||I4
+    uint8_t I1 = (uint8_t)((0xff000000 & I) >> 24);
+    uint8_t I2 = (uint8_t)((0x00ff0000 & I) >> 16);
+    uint8_t I3 = (uint8_t)((0x0000ff00 & I) >> 8);
+    uint8_t I4 = (uint8_t)(0x000000ff & I);
 
-    // Calcular Y
-    Y = ((S1[I1] MAIS S2[I2]) MENOS (S3[I3])) XOR (S4[I4])
+    // Calcular Y = ((S1[I1] + S2[I2]) - S3[I3]) ^ S4[I4]
+    uint32_t Y = sub32bits(sum32bits(S1[I1], S2[I2]), (S3[I3])) ^ (S4[I4]);
 
+    return Y;
 }
 
 uint32_t f2(uint32_t X, uint32_t K5, uint32_t K32) {
-    /**
-     * Calcula o valor Y
-     *
-     * Entrada: X de 32 bits, K5 de 5 bits e K32 de 32 bits
-     * Saída: Y de 32 bits
-     */
 
     // Calcular I
-    uint32_t I = ((K32 XOR X) mod 2^32 << K5);
+    uint32_t I = rotateLeft((K32 ^ X), K5, SIZE_32);
 
-    // Dividir I
-    I1, I2, I3, I4 = split(I);
+    // Dividir I = I1||I2||I3||I4
+    uint8_t I1 = (uint8_t)((0xff000000 & I) >> 24);
+    uint8_t I2 = (uint8_t)((0x00ff0000 & I) >> 16);
+    uint8_t I3 = (uint8_t)((0x0000ff00 & I) >> 8);
+    uint8_t I4 = (uint8_t)(0x000000ff & I);
 
-    // Calcular Y
-    Y = ((S1[I1] MENOS S2[I2]) XOR (S3[I3])) MAIS (S4[I4])
+    // Calcular Y = ((S1[I1] - S2[I2]) ^ (S3[I3])) + (S4[I4])
+    uint32_t Y = sum32bits(sub32bits(S1[I1], S2[I2]) ^ (S3[I3]), S4[I4]);
 
+    return Y;
 }
 
 uint32_t f3(uint32_t X, uint32_t K5, uint32_t K32) {
-    /**
-     * Calcula o valor Y
-     *
-     * Entrada: X de 32 bits, K5 de 5 bits e K32 de 32 bits
-     * Saída: Y de 32 bits
-     */
 
     // Calcular I
-    uint32_t I = ((K32 XOR X) mod 2^32 << K5);
+    uint32_t I = rotateLeft((K32 ^ X), K5, SIZE_32);
 
-    // Dividir I
-    I1, I2, I3, I4 = split(I);
+    // Dividir I = I1||I2||I3||I4
+    uint8_t I1 = (uint8_t)((0xff000000 & I) >> 24);
+    uint8_t I2 = (uint8_t)((0x00ff0000 & I) >> 16);
+    uint8_t I3 = (uint8_t)((0x0000ff00 & I) >> 8);
+    uint8_t I4 = (uint8_t)(0x000000ff & I);
 
-    // Calcular Y
-    Y = ((S1[I1] XOR S2[I2]) MAIS (S3[I3])) MENOS (S4[I4])
+    // Calcular Y = ((S1[I1] ^ S2[I2]) + (S3[I3])) - (S4[I4])
+    uint32_t Y = sub32bits(sum32bits((S1[I1] ^ S2[I2]), S3[I3]), S4[I4]);
 
+    return Y;
 }
 
 void getSubkeys(uint32_t intermediateKey[4], uint32_t KR5[4], uint32_t KM32[4]) {
