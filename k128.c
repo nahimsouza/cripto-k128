@@ -1,8 +1,19 @@
+/**
+ * Implementação do Algoritmo K128
+ *
+ * MAC0336/5723- Criptografia para Segurança de Dados (2023)
+ *
+ * Aluno: Nahim Alves de Souza
+ */
+
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <math.h>
 
-#define NROUNDS 12
+#define NUM_ROUNDS 12
+#define SIZE_5 5
+#define SIZE_32 32
 
 // SBoxes S1, S2, S3 e S4
 
@@ -146,8 +157,29 @@ uint32_t S4[] = {
     0x7ae5290c, 0x3cb9536b, 0x851e20fe, 0x9833557e, 0x13ecf0b0, 0xd3ffb372, 0x3f85c5c1, 0x0aef7ed2,
 };
 
+/**
+ * @brief Realiza um XOR com 128 bits (array 4x32)
+ *
+ * @param[in] a Entrada a 128 bits (4x32)
+ * @param[in] b Entrada b 128 bits (4x32)
+ * @param[out] out Saída de 128 bits (4x32)
+ */
+void xor128(uint32_t a[4], uint32_t b[4], uint32_t out[4]) {
+    out[0] = a[0] ^ b[0];
+    out[1] = a[1] ^ b[1];
+    out[2] = a[2] ^ b[2];
+    out[3] = a[3] ^ b[3];
+}
 
-void f1(uint32_t X, uint32_t K5, uint32_t K32) {
+uint32_t rotateLeft(uint32_t value, uint32_t numBits, uint32_t size) {
+    return (value << numBits) | (value >> (size - numBits));
+}
+
+uint32_t rotateRight(uint32_t value, uint32_t numBits, uint32_t size) {
+    return (value >> numBits) | (value << (size - numBits));
+}
+
+uint32_t f1(uint32_t X, uint32_t K5, uint32_t K32) {
     /**
      * Calcula o valor Y
      *
@@ -166,7 +198,7 @@ void f1(uint32_t X, uint32_t K5, uint32_t K32) {
 
 }
 
-void f2(uint32_t X, uint32_t K5, uint32_t K32) {
+uint32_t f2(uint32_t X, uint32_t K5, uint32_t K32) {
     /**
      * Calcula o valor Y
      *
@@ -185,7 +217,7 @@ void f2(uint32_t X, uint32_t K5, uint32_t K32) {
 
 }
 
-void f3(uint32_t X, uint32_t K5, uint32_t K32) {
+uint32_t f3(uint32_t X, uint32_t K5, uint32_t K32) {
     /**
      * Calcula o valor Y
      *
@@ -215,35 +247,104 @@ void KR32() {
     KM32(i, 0) = W ; KM32(i, 1) = Z; KM32(i, 2) = Y ; KM32(i, 3) = X;
 }
 
-void generateKey(K, i) {
+/**
+ * @brief Gera i-esima chave intermediária a partir da anterior
+ *
+ * @param[in] previousKey Chave K(i-1) de 128 bits (4x32)
+ * @param[in] i Inteiro representando a iteração atual (round)
+ * @param[out] currentKey Chave K(i) de 128 bits (4x32)
+ */
+void generateIntermediateKey(uint32_t previousKey[4], uint32_t i, uint32_t currentKey[4]) {
 
-    W = W XOR f2(X, ConstR << [(i + 2)^2 ] mod 3), ConstM << [(i + 3)2 ] mod 7);
-    Z = Z XOR f1(W, ConstR << (i + 2) mod 3      , ConstM << (i + 3) mod 7 ;
-    Y = Y XOR f3(Z, ConstR << [(i + 2)^3 ] mod 3), ConstM << [(i + 3)3 ] mod 7);
-    X = X XOR f2(Y, ConstR << [(i + 2)^2 ] mod 3), ConstM << [(i + 3)2 ] mod 7);
+    uint32_t ConstR = 0x13; // 5 bits (10011)
+    uint32_t ConstM = 0xcb3725f7; // 32 bits
 
+    // Divide chave K(i-1) em X||Y||Z||W
+    uint32_t X = previousKey[0];
+    uint32_t Y = previousKey[1];
+    uint32_t Z = previousKey[2];
+    uint32_t W = previousKey[3];
+
+    uint32_t rotation5bits;
+    uint32_t rotation32bits;
+
+    // Calcula W
+    rotation5bits = rotateLeft(ConstR, ((uint32_t) pow(i + 2, 2) % 3), SIZE_5);
+    rotation32bits = rotateLeft(ConstM, ((uint32_t) pow(i + 3, 2) % 7), SIZE_32);
+    xor128(W, f2(X, rotation5bits, rotation32bits), W);
+
+    // Calcula Z
+    rotation5bits = rotateLeft(ConstR, ((uint32_t) (i + 2) % 3), SIZE_5);
+    rotation32bits = rotateLeft(ConstM, ((uint32_t) (i + 3) % 7), SIZE_32);
+    xor128(Z, f1(W, rotation5bits, rotation32bits), Z);
+
+    // Calcula Y
+    rotation5bits = rotateLeft(ConstR, ((uint32_t) pow(i + 2, 3) % 3), SIZE_5);
+    rotation32bits = rotateLeft(ConstM, ((uint32_t) pow(i + 3, 3) % 7), SIZE_32);
+    xor128(Y, f3(Z, rotation5bits, rotation32bits), Y);
+
+    // Calcula X
+    rotation5bits = rotateLeft(ConstR, ((uint32_t) pow(i + 2, 2) % 3), SIZE_5);
+    rotation32bits = rotateLeft(ConstM, ((uint32_t) pow(i + 3, 2) % 7), SIZE_32);
+    xor128(X, f2(X, rotation5bits, rotation32bits), X);
+
+    // Concatena chave K(i) = W||Z||Y||X
+    currentKey[0] = W;
+    currentKey[1] = Z;
+    currentKey[2] = Y;
+    currentKey[3] = X;
 }
 
-void k128_encrypt(uint32_t X[4], uint32_t Y[4], uint32_t i, uint32_t K[4]) {
-    /*
-     * Implementa uma iteração do K128
-     *
-     * Entrada: X de 128 bits, i referente à iteração (round), chave K
-     * Saída: Y de 128 bits
-     *
-     */
+/**
+ * @brief Gera chaves intermediárias a partir da principal
+ *
+ * @param[in] key Chave principal de 128 bits (4x32)
+ * @param[out] intermediateKeys Array contendo chaves intermediárias (128 bits - 4x32) de cada round
+ */
+void generateKeys(uint32_t key[4], uint32_t intermediateKeys[NUM_ROUNDS][4]) {
 
-    uint32_t A, B, C, D;
+    // Gera a chave K(0)
+    uint32_t ConstK[4] = {0x5a827999, 0x874aa67d, 0x657b7c8e, 0xbd070242};
+    xor128(key, ConstK, intermediateKeys[0]);
 
-    X, Y, Z, W = generateKey(K, i);
+    for (int i = 1; i < NUM_ROUNDS; i++) {
+        // Gera chave K(i) a partir de K(i-1)
+        generateIntermediateKey(intermediateKeys[i - 1], i, intermediateKeys[i]);
+    }
+}
 
-    C = C XOR f2(D, KR5(i, 0), KM32(i, 0));
-    B = B XOR f1(C, KR5(i, 1), KM32(i, 1));
-    A = A XOR f3(B, KR5(i, 2), KM32(i, 2));
-    D = D XOR f2(A, KR5(i, 3), KM32(i, 3));
+/**
+ * @brief Implementa uma iteração (round) do K128.
+ *
+ * @param[in] input Entrada X de 128 bits (4x32).
+ * @param[in] round Inteiro referente à iteração atual (round).
+ * @param[in] key Chave principal K de 128 bits (4x32).
+ * @param[out] output Saída Y de 128 bits (4x32).
+ */
+void k128_encrypt(uint32_t input[4], uint32_t round, uint32_t key[4], uint32_t output[4]) {
 
-    // Concatena valores em Y
-    return Y = C || B || A || D;
+    // Divide entrada em 4 partes de 32 bits: A||B||C||D
+    uint32_t A = input[0];
+    uint32_t B = input[1];
+    uint32_t C = input[2];
+    uint32_t D = input[3];
+
+    // Usando a chave principal, gera KR5 e KM32 para a iteração (round) atual
+    uint32_t KR5[4];
+    uint32_t KM32[4];
+    getKR5(key, round, KR5);
+    getKM32(key, round, KM32);
+
+    C = C ^ f2(D, KR5[0], KM32[0]);
+    B = B ^ f1(C, KR5[1], KM32[1]);
+    A = A ^ f3(B, KR5[2], KM32[2]);
+    D = D ^ f2(A, KR5[3], KM32[3]);
+
+    // Monta valores da saída, correspondente a C||B||A||D
+    output[0] = C;
+    output[1] = D;
+    output[2] = A;
+    output[3] = B;
 }
 
 
@@ -252,11 +353,13 @@ void encrypt(char* input, char* output, char* key) {
 
     // split input blocks
 
+    uint32_t K[NUM_ROUNDS][4];
+    generateKeys(key, K);
 
     // CBC ?
     for (int i = 0; i < numBlocks; i++) {
-        for (int j = 0; j < NROUNDS; j++) {
-            k128_encrypt(j, inputBlock, kR5(j,...), kM32(j,...), outputBlock, K);
+        for (int j = 0; j < NUM_ROUNDS; j++) {
+            k128_encrypt(input, round, key, output);
         }
         output[i] = outputBlock;
     }
