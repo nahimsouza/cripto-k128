@@ -10,10 +10,21 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <math.h>
+#include <string.h>
 
 #define NUM_ROUNDS 12
 #define SIZE_5 5
 #define SIZE_32 32
+#define MAX_FILENAME 4096
+#define MAX_PASSWORD 4096
+
+#define ENCRYPT 'c'
+#define DECRYPT 'd'
+#define CALC_RANDOMNESS '1'
+#define ERASE_FILE 'a'
+#define INPUT 'i'
+#define OUTPUT 'o'
+#define PASSWORD 'p'
 
 // SBoxes S1, S2, S3 e S4
 uint32_t S1[256] = {
@@ -345,7 +356,7 @@ void generateKeys(uint32_t key[4], uint32_t intermediateKeys[NUM_ROUNDS][4]) {
  * @param[in] intermediateKey Chave intermediaria K(i) de 128 bits (4x32).
  * @param[out] output Saída Y de 128 bits (4x32).
  */
-void k128_encrypt(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4], uint32_t output[4]) {
+void encryptBlock(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4], uint32_t output[4]) {
 
     // Divide entrada em 4 partes de 32 bits: A||B||C||D
     uint32_t A = input[0];
@@ -371,41 +382,112 @@ void k128_encrypt(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4]
 }
 
 
-void encrypt(uint32_t* input, uint32_t* output, uint32_t* key) {
-    // input, output and key must have 128 bits blocks
+void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], char password[MAX_PASSWORD]) {
 
-    // split input blocks
+    // Carrega arquivo de entrada
+
+
+    // Divide arquivo em blocos
+
+    // Completa último bloco com 1's se não tiver 128 bits
+
+    // Acrescenta bloco extra com tamanho do arquivo original
+
+    // Gera chave principal a partir da senha
 
     uint32_t intermediateKeys[NUM_ROUNDS][4];
     generateKeys(key, intermediateKeys);
 
     // CBC ?
     for (int i = 0; i < numBlocks; i++) {
-        for (int j = 0; j < NUM_ROUNDS; j++) {
-            k128_encrypt(input, round, key, output);
+        for (int round = 0; round < NUM_ROUNDS; round++) {
+            encryptBlock(input[i], round, intermediateKeys[round], output[i]);
         }
         output[i] = outputBlock;
     }
+
+    // Escreve saída do buffer no arquivo
+
 }
 
-void decrypt(char* input, char* output, char* key) {
+void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], char password[MAX_PASSWORD]) {
+
+}
+
+void print_usage() {
 
 }
 
 int main(int argc, char* argv[]) {
 
-    for(int cont = 0; cont < argc; cont++)
-        printf("%d Parametro: %s\n", cont, argv[cont]);
+    // Lê parâmetros de entrada
+    int opt;
+    int erase = 0;
+    char mode;
+    char inputFileName[MAX_FILENAME] = {0};
+    char outputFileName[MAX_FILENAME] = {0};
+    char password[MAX_PASSWORD] = {0};
 
+    if (argc == 1) {
+        printf("Erro: faltam argumentos.\n");
+        print_usage();
+    }
 
-    // read file
-    char* input = NULL;
+    while((opt = getopt(argc, argv, ":cd1i:o:p:a")) != -1)
+    {
+        switch(opt)
+        {
+            case ENCRYPT:
+            case DECRYPT:
+            case CALC_RANDOMNESS:
+                mode = opt;
+                break;
+            case ERASE_FILE:
+                erase = 1;
+                break;
+            case INPUT:
+                strcpy(inputFileName, optarg);
+                break;
+            case OUTPUT:
+                strcpy(outputFileName, optarg);
+                break;
+            case PASSWORD:
+                strcpy(password, optarg);
+                break;
+            case ':':
+                printf("Erro: Parâmetro '-%c' precisa de um valor.\n", optopt);
+                break;
+            case '?':
+                printf("Opção inválida: %c\n", optopt);
+                break;
+        }
+    }
 
-    // make input validations
+    // Parseia argumentos extras (inválidos)
+    if (optind < argc) {
+        printf("Argumentos inválidos: ");
+        for(; optind < argc; optind++){
+            printf("%s ", argv[optind]);
+        }
+        printf("\n");
+    }
 
-    // encrypt file
-    char* output = NULL;
-    encrypt(input, output, NULL);
+    // Executa operação escolhida
+    switch(mode) {
+        case ENCRYPT:
+            encryptFile(inputFileName, outputFileName, password);
+            break;
+        case DECRYPT:
+        case CALC_RANDOMNESS:
+        default:
+            printf("Operação não implementada.\n");
+            break;
+    }
+
+    // Sobrescreve e deleta arquivo original se solicitado
+    // if (erase) {
+    //     eraseFile(inputFileName);
+    // }
 
     return 0;
 }
