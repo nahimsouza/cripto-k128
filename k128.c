@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
+#include <unistd.h>
+#include <getopt.h>
 
 #define NUM_ROUNDS 12
 #define SIZE_5 5
@@ -306,22 +308,22 @@ void generateIntermediateKey(uint32_t previousKey[4], uint32_t i, uint32_t curre
     // Calcula W
     rotation5bits = rotateLeft(ConstR, ((uint32_t) pow(i + 2, 2) % 3), SIZE_5);
     rotation32bits = rotateLeft(ConstM, ((uint32_t) pow(i + 3, 2) % 7), SIZE_32);
-    xor128(W, f2(X, rotation5bits, rotation32bits), W);
+    W = W ^ f2(X, rotation5bits, rotation32bits);
 
     // Calcula Z
     rotation5bits = rotateLeft(ConstR, ((uint32_t) (i + 2) % 3), SIZE_5);
     rotation32bits = rotateLeft(ConstM, ((uint32_t) (i + 3) % 7), SIZE_32);
-    xor128(Z, f1(W, rotation5bits, rotation32bits), Z);
+    Z = Z ^ f1(W, rotation5bits, rotation32bits);
 
     // Calcula Y
     rotation5bits = rotateLeft(ConstR, ((uint32_t) pow(i + 2, 3) % 3), SIZE_5);
     rotation32bits = rotateLeft(ConstM, ((uint32_t) pow(i + 3, 3) % 7), SIZE_32);
-    xor128(Y, f3(Z, rotation5bits, rotation32bits), Y);
+    Y = Y ^ f3(Z, rotation5bits, rotation32bits);
 
     // Calcula X
     rotation5bits = rotateLeft(ConstR, ((uint32_t) pow(i + 2, 2) % 3), SIZE_5);
     rotation32bits = rotateLeft(ConstM, ((uint32_t) pow(i + 3, 2) % 7), SIZE_32);
-    xor128(X, f2(X, rotation5bits, rotation32bits), X);
+    X = X ^ f2(X, rotation5bits, rotation32bits);
 
     // Concatena chave K(i) = W||Z||Y||X
     currentKey[0] = W;
@@ -384,29 +386,81 @@ void encryptBlock(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4]
 
 void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], char password[MAX_PASSWORD]) {
 
-    // Carrega arquivo de entrada
+    // Carrega arquivo de entrada.
+    FILE* inputFile = NULL;
+    inputFile = fopen(inputFileName, "r");
+    if (inputFile == NULL) {
+        printf("Erro abrir arquivo de entrada: %s.\n", inputFileName);
+        return;
+    }
 
+    // Cria arquivo de saída.
+    FILE* outputFile = NULL;
+    outputFile = fopen(outputFileName, "w");
+    if (outputFile == NULL) {
+        printf("Erro abrir arquivo de saída: %s.\n", inputFileName);
+        return;
+    }
 
-    // Divide arquivo em blocos
+    // TODO: Valida parâmetros obrigatórios
+    // TODO: Valida senha
+    // TODO: Gera chave principal a partir da senha
 
-    // Completa último bloco com 1's se não tiver 128 bits
-
-    // Acrescenta bloco extra com tamanho do arquivo original
-
-    // Gera chave principal a partir da senha
+    // TODO: remover chave de testes
+    uint32_t key[4] = {0x12345678, 0x12345678, 0x12345678, 0x12345678};
 
     uint32_t intermediateKeys[NUM_ROUNDS][4];
     generateKeys(key, intermediateKeys);
 
-    // CBC ?
-    for (int i = 0; i < numBlocks; i++) {
+    // Lê tamanho do arquivo a partir da posição do cursor.
+    fseek(inputFile, 0, SEEK_END);
+    uint64_t fileSize = ftell(inputFile);
+
+    // Volta o cursor para o início do arquivo.
+    fseek(inputFile, 0, SEEK_SET);
+
+    // Buffer de 128 bits que será lido do arquivo
+    // Limpa buffer antes de preencher, pois caso sejam lidos menos de 128 bits
+    // o buffer automaticamente fica preenchido com 1's
+    uint32_t buffer[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
+    uint64_t sizeRead = 0;
+    uint8_t writeLastBlock = 0; // Indica que chegou no último bloco
+
+    // Lê e criptografa cada bloco do arquivo.
+    while (sizeRead = fread(buffer, sizeof(uint32_t), 4, inputFile) || writeLastBlock) {
+
+        // TODO: CBC
         for (int round = 0; round < NUM_ROUNDS; round++) {
-            encryptBlock(input[i], round, intermediateKeys[round], output[i]);
+            // Para cada round, inputBuffer é a variável de entrada e de saída,
+            // representando: X <- Iteracao(X, ...).
+            encryptBlock(buffer, round, intermediateKeys[round], buffer);
         }
-        output[i] = outputBlock;
+
+        // Escreve bloco criptografado no arquivo de saída.
+        // Representa: Y <- X
+        fwrite(buffer, sizeof(uint32_t), 4, outputFile);
+
+        // Limpa o buffer novamente.
+        buffer[0] = buffer[1] = buffer[2] = buffer[3] = 0xffffffff;
     }
 
-    // Escreve saída do buffer no arquivo
+    // Acrescenta bloco extra (128 bits) com tamanho do arquivo original
+    uint64_t lastBlock[2] = {0, 0};
+    lastBlock[0] = fileSize;
+
+    // Copia o bloco para o buffer.
+    memcpy(buffer, lastBlock, 4);
+
+    // TODO: CBC
+    for (int round = 0; round < NUM_ROUNDS; round++) {
+        encryptBlock(buffer, round, intermediateKeys[round], buffer);
+    }
+    // Escreve bloco criptografado no arquivo de saída.
+    fwrite(buffer, sizeof(uint32_t), 4, outputFile);
+
+    // Fecha arquivos.
+    fclose(inputFile);
+    fclose(outputFile);
 
 }
 
