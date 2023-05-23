@@ -383,6 +383,30 @@ void encryptBlock(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4]
     output[3] = B;
 }
 
+void decryptBlock(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4], uint32_t output[4]) {
+
+    // Divide entrada em 4 partes de 32 bits: A||B||C||D
+    uint32_t C = input[0];
+    uint32_t D = input[1];
+    uint32_t A = input[2];
+    uint32_t B = input[3];
+
+    // Usando a chave K(i), obtém KR5(i,j) e KM32(i,j)
+    uint32_t KR5[4];
+    uint32_t KM32[4];
+    getSubkeys(intermediateKey, KR5, KM32);
+
+    D = D ^ f2(A, KR5[3], KM32[3]);
+    A = A ^ f3(B, KR5[2], KM32[2]);
+    B = B ^ f1(C, KR5[1], KM32[1]);
+    C = C ^ f2(D, KR5[0], KM32[0]);
+
+    // Monta valores da saída, correspondente a C||B||A||D
+    output[0] = A;
+    output[1] = B;
+    output[2] = C;
+    output[3] = D;
+}
 
 void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], char password[MAX_PASSWORD]) {
 
@@ -424,14 +448,13 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     // o buffer automaticamente fica preenchido com 1's
     uint32_t buffer[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
     uint64_t sizeRead = 0;
-    uint8_t writeLastBlock = 0; // Indica que chegou no último bloco
 
     // Lê e criptografa cada bloco do arquivo.
-    while (sizeRead = fread(buffer, sizeof(uint32_t), 4, inputFile) || writeLastBlock) {
+    while (sizeRead = fread(buffer, sizeof(uint32_t), 4, inputFile)) {
 
         // TODO: CBC
         for (int round = 0; round < NUM_ROUNDS; round++) {
-            // Para cada round, inputBuffer é a variável de entrada e de saída,
+            // Para cada round, buffer é a variável de entrada e de saída,
             // representando: X <- Iteracao(X, ...).
             encryptBlock(buffer, round, intermediateKeys[round], buffer);
         }
@@ -465,6 +488,63 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
 }
 
 void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], char password[MAX_PASSWORD]) {
+
+    // Carrega arquivo de entrada.
+    FILE* inputFile = NULL;
+    inputFile = fopen(inputFileName, "r");
+    if (inputFile == NULL) {
+        printf("Erro abrir arquivo de entrada: %s.\n", inputFileName);
+        return;
+    }
+
+    // Cria arquivo de saída.
+    FILE* outputFile = NULL;
+    outputFile = fopen(outputFileName, "w");
+    if (outputFile == NULL) {
+        printf("Erro abrir arquivo de saída: %s.\n", inputFileName);
+        return;
+    }
+
+    // TODO: remover chave de testes
+    uint32_t key[4] = {0x12345678, 0x12345678, 0x12345678, 0x12345678};
+
+    uint32_t intermediateKeys[NUM_ROUNDS][4];
+    generateKeys(key, intermediateKeys);
+
+    // Lê tamanho do arquivo a partir da posição do cursor.
+    fseek(inputFile, 0, SEEK_END);
+    uint64_t fileSize = ftell(inputFile);
+
+    // Volta o cursor para o início do arquivo.
+    fseek(inputFile, 0, SEEK_SET);
+
+    // Buffer de 128 bits que será lido do arquivo
+    // Limpa buffer antes de preencher, pois caso sejam lidos menos de 128 bits
+    // o buffer automaticamente fica preenchido com 1's
+    uint32_t buffer[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
+    uint64_t sizeRead = 0;
+
+    // Lê e criptografa cada bloco do arquivo.
+    while (sizeRead = fread(buffer, sizeof(uint32_t), 4, inputFile)) {
+
+        // TODO: CBC
+        for (int round = NUM_ROUNDS - 1; round >= 0; round--) {
+            // Para cada round, buffer é a variável de entrada e de saída,
+            // representando: X <- Iteracao(X, ...).
+            decryptBlock(buffer, round, intermediateKeys[round], buffer);
+        }
+
+        // Escreve bloco criptografado no arquivo de saída.
+        // Representa: Y <- X
+        fwrite(buffer, sizeof(uint32_t), 4, outputFile);
+
+        // Limpa o buffer novamente.
+        buffer[0] = buffer[1] = buffer[2] = buffer[3] = 0xffffffff;
+    }
+
+    // Fecha arquivos.
+    fclose(inputFile);
+    fclose(outputFile);
 
 }
 
@@ -532,6 +612,8 @@ int main(int argc, char* argv[]) {
             encryptFile(inputFileName, outputFileName, password);
             break;
         case DECRYPT:
+            decryptFile(inputFileName, outputFileName, password);
+            break;
         case CALC_RANDOMNESS:
         default:
             printf("Operação não implementada.\n");
