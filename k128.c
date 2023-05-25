@@ -13,12 +13,16 @@
 #include <string.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <ctype.h>
 
 #define NUM_ROUNDS 12
 #define SIZE_5 5
 #define SIZE_32 32
 #define MAX_FILENAME 4096
 #define MAX_PASSWORD 4096
+
+#define TRUE 1
+#define FALSE 0
 
 #define ENCRYPT 'c'
 #define DECRYPT 'd'
@@ -408,7 +412,7 @@ void decryptBlock(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4]
     output[3] = D;
 }
 
-void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], char password[MAX_PASSWORD]) {
+void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], uint32_t key[4]) {
 
     // Carrega arquivo de entrada.
     FILE* inputFile = NULL;
@@ -425,13 +429,6 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
         printf("Erro abrir arquivo de saída: %s.\n", outputFileName);
         return;
     }
-
-    // TODO: Valida parâmetros obrigatórios
-    // TODO: Valida senha
-    // TODO: Gera chave principal a partir da senha
-
-    // TODO: remover chave de testes
-    uint32_t key[4] = {0x12345678, 0x12345678, 0x12345678, 0x12345678};
 
     uint32_t intermediateKeys[NUM_ROUNDS][4];
     generateKeys(key, intermediateKeys);
@@ -497,7 +494,7 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
 
 }
 
-void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], char password[MAX_PASSWORD]) {
+void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], uint32_t key[4]) {
 
     // Carrega arquivo de entrada.
     FILE* inputFile = NULL;
@@ -514,9 +511,6 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
         printf("Erro abrir arquivo de saída: %s.\n", outputFileName);
         return;
     }
-
-    // TODO: remover chave de testes
-    uint32_t key[4] = {0x12345678, 0x12345678, 0x12345678, 0x12345678};
 
     uint32_t intermediateKeys[NUM_ROUNDS][4];
     generateKeys(key, intermediateKeys);
@@ -621,8 +615,43 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
 
 }
 
-void print_usage() {
+void printUsage() {
 
+}
+
+uint8_t validatePassword(char password[MAX_PASSWORD], uint32_t key[4]) {
+    if (strlen(password) < 8) {
+        printf("A senha deve possuir pelo menos 8 caracteres.\n");
+        return FALSE;
+    }
+
+    uint32_t countDigits = 0;
+    uint32_t countLetters = 0;
+    for (uint32_t i = 0; i < strlen(password); i++) {
+        if (isdigit(password[i])) {
+            countDigits++;
+        }
+
+        if(isalpha(password[i])) {
+            countLetters++;
+        }
+    }
+
+    if (countDigits < 2 || countLetters < 2) {
+        printf("A senha deve possuir pelo menos 2 dígitos e 2 letras.\n");
+        return FALSE;
+    }
+
+    // Gera chave principal a partir da senha
+    char temp[16]; // variável auxiliar de 128 bits (16 bytes).
+    for (uint32_t i = 0; i < 16; i++) {
+        temp[i] = password[i % (strlen(password))];
+    }
+
+    // Copia chave de 128 bits para a saída
+    memcpy(key, temp, 16);
+
+    return TRUE;
 }
 
 int main(int argc, char* argv[]) {
@@ -637,7 +666,7 @@ int main(int argc, char* argv[]) {
 
     if (argc == 1) {
         printf("Erro: faltam argumentos.\n");
-        print_usage();
+        printUsage();
     }
 
     while((opt = getopt(argc, argv, ":cd1i:o:p:a")) != -1)
@@ -680,16 +709,21 @@ int main(int argc, char* argv[]) {
     }
 
     // TODO: Valida parâmetros obrigatórios
-    // TODO: Valida senha
-    // TODO: Gera chave principal a partir da senha
+    
+    // Valida senha e gera chave principal a partir da senha
+    uint32_t key[4];
+    if (!validatePassword(password, key)) {
+        printf("Senha inválida.\n");
+        return 0;
+    }
 
     // Executa operação escolhida
     switch(mode) {
         case ENCRYPT:
-            encryptFile(inputFileName, outputFileName, password);
+            encryptFile(inputFileName, outputFileName, key);
             break;
         case DECRYPT:
-            decryptFile(inputFileName, outputFileName, password);
+            decryptFile(inputFileName, outputFileName, key);
             break;
         case CALC_RANDOMNESS:
         default:
