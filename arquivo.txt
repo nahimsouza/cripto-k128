@@ -1,4 +1,3 @@
-ABCDEFG
 Arquivo teste
 Linha dois
 Linha três
@@ -8,4 +7,4 @@ ABCDEFGHIKLMNOPQRSTUVWXYZ
 ABCDEFGHIKLMNOPQRSTUVWXYZ
 abcdefghiklmnopqrstuvwxyz
 abcdefghiklmnopqrstuvwxyz
-FIM.
+FIM..0123456ç

@@ -422,7 +422,7 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     FILE* outputFile = NULL;
     outputFile = fopen(outputFileName, "w");
     if (outputFile == NULL) {
-        printf("Erro abrir arquivo de saída: %s.\n", inputFileName);
+        printf("Erro abrir arquivo de saída: %s.\n", outputFileName);
         return;
     }
 
@@ -449,10 +449,14 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     uint32_t buffer[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
     uint64_t sizeRead = 0;
 
-    // Lê e criptografa cada bloco do arquivo.
-    while (sizeRead = fread(buffer, sizeof(uint32_t), 4, inputFile)) {
+    // Bloco CBC - valor inicial
+    uint32_t cbc[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
 
-        // TODO: CBC
+    // Lê e criptografa cada bloco do arquivo.
+    while (sizeRead = fread(buffer, 1, 16, inputFile)) {
+        // Aplica CBC
+        xor128(cbc, buffer, buffer);
+
         for (int round = 0; round < NUM_ROUNDS; round++) {
             // Para cada round, buffer é a variável de entrada e de saída,
             // representando: X <- Iteracao(X, ...).
@@ -461,7 +465,10 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
 
         // Escreve bloco criptografado no arquivo de saída.
         // Representa: Y <- X
-        fwrite(buffer, sizeof(uint32_t), 4, outputFile);
+        fwrite(buffer, 1, 16, outputFile);
+
+        // Copia saída para CBC, para ser usada no próximo bloco
+        memcpy(cbc, buffer, 16);
 
         // Limpa o buffer novamente.
         buffer[0] = buffer[1] = buffer[2] = buffer[3] = 0xffffffff;
@@ -471,15 +478,18 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     uint64_t lastBlock[2] = {0, 0};
     lastBlock[0] = fileSize;
 
-    // Copia o bloco para o buffer.
-    memcpy(buffer, lastBlock, 4);
+    // Copia o bloco para o buffer (16 bytes == 128 bits).
+    memcpy(buffer, lastBlock, 16);
 
-    // TODO: CBC
+    // Aplicando CBC
+    xor128(cbc, buffer, buffer);
+
     for (int round = 0; round < NUM_ROUNDS; round++) {
         encryptBlock(buffer, round, intermediateKeys[round], buffer);
     }
+
     // Escreve bloco criptografado no arquivo de saída.
-    fwrite(buffer, sizeof(uint32_t), 4, outputFile);
+    fwrite(buffer, 1, 16, outputFile);
 
     // Fecha arquivos.
     fclose(inputFile);
@@ -501,7 +511,7 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     FILE* outputFile = NULL;
     outputFile = fopen(outputFileName, "w");
     if (outputFile == NULL) {
-        printf("Erro abrir arquivo de saída: %s.\n", inputFileName);
+        printf("Erro abrir arquivo de saída: %s.\n", outputFileName);
         return;
     }
 
@@ -519,27 +529,90 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     fseek(inputFile, 0, SEEK_SET);
 
     // Buffer de 128 bits que será lido do arquivo
-    // Limpa buffer antes de preencher, pois caso sejam lidos menos de 128 bits
-    // o buffer automaticamente fica preenchido com 1's
-    uint32_t buffer[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
+    uint32_t buffer[4] = {0, 0, 0, 0};
     uint64_t sizeRead = 0;
 
-    // Lê e criptografa cada bloco do arquivo.
-    while (sizeRead = fread(buffer, sizeof(uint32_t), 4, inputFile)) {
+    // Número de blocos de 128 bits
+    uint64_t numberOfBlocks = fileSize / 16;
+    uint64_t blockCount = 0;
 
-        // TODO: CBC
+    // Bloco CBC - valor inicial
+    uint32_t cbc[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
+    uint32_t nextCbc[4];
+
+    // Lê e criptografa cada bloco do arquivo.
+    while (blockCount < numberOfBlocks - 2) {
+        blockCount++;
+        fread(buffer, 1, 16, inputFile);
+
+        // Copia buffer criptografado para ser usado no CBC do próximo round
+        memcpy(nextCbc, buffer, 16);
+
         for (int round = NUM_ROUNDS - 1; round >= 0; round--) {
             // Para cada round, buffer é a variável de entrada e de saída,
             // representando: X <- Iteracao(X, ...).
             decryptBlock(buffer, round, intermediateKeys[round], buffer);
         }
 
-        // Escreve bloco criptografado no arquivo de saída.
-        // Representa: Y <- X
-        fwrite(buffer, sizeof(uint32_t), 4, outputFile);
+        // Aplica CBC no bloco decriptografado.
+        xor128(cbc, buffer, buffer);
+
+        // Escreve bloco decriptografado no arquivo de saída.
+        fwrite(buffer, 1, 16, outputFile);
+
+        // Copia nextCbc
+        memcpy(cbc, nextCbc, 16);
 
         // Limpa o buffer novamente.
-        buffer[0] = buffer[1] = buffer[2] = buffer[3] = 0xffffffff;
+        buffer[0] = buffer[1] = buffer[2] = buffer[3] = 0;
+    }
+
+    // Lê o último *bloco de dados* separadamente,
+    // pois pode conter um padding de 1's
+    fread(buffer, 1, 16, inputFile);
+
+    // Copia buffer criptografado para ser usado no CBC do próximo round
+    memcpy(nextCbc, buffer, 16);
+
+    for (int round = NUM_ROUNDS - 1; round >= 0; round--) {
+        decryptBlock(buffer, round, intermediateKeys[round], buffer);
+    }
+
+    // Aplica CBC no bloco decriptografado.
+    xor128(cbc, buffer, buffer);
+
+    // Copia conteúdo decriptografado do buffer (16 bytes == 128 bits).
+    uint8_t lastDataBlock[16];
+    memcpy(lastDataBlock, buffer, 16);
+
+    // Copia nextCbc
+    memcpy(cbc, nextCbc, 16);
+
+    // Limpa o buffer novamente.
+    buffer[0] = buffer[1] = buffer[2] = buffer[3] = 0;
+
+    // Lê o último bloco criptografado,
+    // que contém o tamanho do arquivo original
+    fread(buffer, 1, 16, inputFile);
+
+    for (int round = NUM_ROUNDS - 1; round >= 0; round--) {
+        decryptBlock(buffer, round, intermediateKeys[round], buffer);
+    }
+
+    // Aplica CBC no bloco decriptografado.
+    xor128(cbc, buffer, buffer);
+
+    // Copia conteúdo decriptografado do buffer (16 bytes == 128 bits).
+    uint64_t lastBlock[2] = {0, 0};
+    memcpy(lastBlock, buffer, 16);
+
+    uint64_t originalFileSize = lastBlock[0];
+
+    // Escreve no arquivo decriptografado, removendo o padding
+    uint32_t i = 0;
+    while ((blockCount * 16 + i) < originalFileSize) {
+        fwrite(&(lastDataBlock[i]), 1, 1, outputFile);
+        i++;
     }
 
     // Fecha arquivos.
@@ -606,6 +679,10 @@ int main(int argc, char* argv[]) {
         printf("\n");
     }
 
+    // TODO: Valida parâmetros obrigatórios
+    // TODO: Valida senha
+    // TODO: Gera chave principal a partir da senha
+
     // Executa operação escolhida
     switch(mode) {
         case ENCRYPT:
@@ -620,7 +697,7 @@ int main(int argc, char* argv[]) {
             break;
     }
 
-    // Sobrescreve e deleta arquivo original se solicitado
+    // TODO: Sobrescreve e deleta arquivo original se solicitado
     // if (erase) {
     //     eraseFile(inputFileName);
     // }
