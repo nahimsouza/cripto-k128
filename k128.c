@@ -21,12 +21,16 @@
 #define MAX_FILENAME 4096
 #define MAX_PASSWORD 4096
 
+#define BLOCKS_128 4
+#define BLOCKS_32 4
+#define INPUT_SIZE_BITS (128 * BLOCKS_128)
+
 #define TRUE 1
 #define FALSE 0
 
 #define ENCRYPT 'c'
 #define DECRYPT 'd'
-#define CALC_RANDOMNESS '1'
+#define CALC_ENTRYOPY '1'
 #define ERASE_FILE 'a'
 #define INPUT 'i'
 #define OUTPUT 'o'
@@ -418,7 +422,7 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     FILE* inputFile = NULL;
     inputFile = fopen(inputFileName, "r");
     if (inputFile == NULL) {
-        printf("Erro abrir arquivo de entrada: %s.\n", inputFileName);
+        printf("Erro ao abrir arquivo de entrada: %s.\n", inputFileName);
         return;
     }
 
@@ -426,7 +430,7 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     FILE* outputFile = NULL;
     outputFile = fopen(outputFileName, "w");
     if (outputFile == NULL) {
-        printf("Erro abrir arquivo de saída: %s.\n", outputFileName);
+        printf("Erro ao abrir arquivo de saída: %s.\n", outputFileName);
         return;
     }
 
@@ -500,7 +504,7 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     FILE* inputFile = NULL;
     inputFile = fopen(inputFileName, "r");
     if (inputFile == NULL) {
-        printf("Erro abrir arquivo de entrada: %s.\n", inputFileName);
+        printf("Erro ao abrir arquivo de entrada: %s.\n", inputFileName);
         return;
     }
 
@@ -508,7 +512,7 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     FILE* outputFile = NULL;
     outputFile = fopen(outputFileName, "w");
     if (outputFile == NULL) {
-        printf("Erro abrir arquivo de saída: %s.\n", outputFileName);
+        printf("Erro ao abrir arquivo de saída: %s.\n", outputFileName);
         return;
     }
 
@@ -654,6 +658,98 @@ uint8_t validatePassword(char password[MAX_PASSWORD], uint32_t key[4]) {
     return TRUE;
 }
 
+void cbcEncrypt(uint32_t buffer[4], uint32_t intermediateKeys[4][4], uint32_t cbc[4], uint32_t encryptedInput[4]) {
+    // Aplica CBC
+    xor128(cbc, buffer, buffer);
+
+    for (int round = 0; round < NUM_ROUNDS; round++) {
+        // Para cada round, buffer é a variável de entrada e de saída,
+        // representando: X <- Iteracao(X, ...).
+        encryptBlock(buffer, round, intermediateKeys[round], encryptedInput);
+    }
+
+    // Copia saída para CBC, para ser usada no próximo bloco
+    memcpy(cbc, buffer, 16);
+}
+
+void calculateEntropy(char inputFileName[MAX_FILENAME], uint32_t key[4]) {
+
+    // Lê 4 blocos (512 bits) do arquivo original - VetEntra
+    FILE* inputFile = NULL;
+    inputFile = fopen(inputFileName, "r");
+    if (inputFile == NULL) {
+        printf("Erro ao abrir arquivo de entrada: %s.\n", inputFileName);
+        return;
+    }
+
+    // Buffer de 512 bits (4 x (4 x 32)) - VetEntra
+    uint32_t buffer[BLOCKS_128][BLOCKS_32];
+
+    // Lê 512 bits (64 bytes) do arquivo de entrada
+    uint32_t sizeRead = fread(buffer, 1, 64, inputFile);
+    if (!sizeRead) {
+        printf("Erro ao ler arquivo: %s.\n", inputFileName);
+        return;
+    }
+
+    // Buffer com bit alterado (um para cada bit) - VetAlterj
+    // 512 vetores de 128 bits
+    uint32_t changedBuffer[INPUT_SIZE_BITS][BLOCKS_128][BLOCKS_32];
+
+    // Cria entrada com um j-ésimo bit alterado - VetAlterj
+    for (uint32_t j = 0; j < INPUT_SIZE_BITS; j++){
+        memcpy(changedBuffer[j], buffer, 16);
+
+        uint32_t k = (j / 128); // 0..3 (4 blocos de 128 bits)
+        uint32_t l = (j % 128) / 32; // 0..3 (4 blocos de 32 bits dentro de cada bloco de 128 bits)
+
+        // Altera j-esimo bit
+        changedBuffer[j][k][l] = buffer[k][l] ^ (1 << (j % 32));
+
+        printf("changed buffer %3d %2d %2d %08x\n", j, k, l, changedBuffer[j][k][l]);
+    }
+
+    // Gera chaves intermediárias para criptografia
+    uint32_t intermediateKeys[NUM_ROUNDS][4];
+    generateKeys(key, intermediateKeys);
+
+    // Criptografa a entrada de K blocos de 128 bits- VetEntraC
+    uint32_t encryptedInput[BLOCKS_128][BLOCKS_32];
+
+    // Bloco CBC - valor inicial
+    uint32_t cbc[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
+
+    for (uint32_t k = 0; k < BLOCKS_128; k++) {
+        uint32_t temp[4];
+        memcpy(temp, buffer[k], 16);
+        cbcEncrypt(temp, intermediateKeys, cbc, encryptedInput[k]);
+    }
+
+    uint32_t encryptedChangedBuffer[INPUT_SIZE_BITS][BLOCKS_128][BLOCKS_32];
+
+    // Criptografa cada um dos 512 VetAlterj
+    for (uint32_t j = 0; j < INPUT_SIZE_BITS; j++) {
+
+        // Reinicializa o valor do CBC
+        cbc[0] = cbc[1] = cbc[2] = cbc[3] = 0xffffffff;
+
+        for (uint32_t k = 0; k < BLOCKS_128; k++) {
+            uint32_t temp[4];
+            memcpy(temp, changedBuffer[j][k], 16);
+            cbcEncrypt(temp, intermediateKeys, cbc, encryptedChangedBuffer[j][k]);
+        }
+    }
+
+    // Para cada bloco k de 128 bits (4 blocos)
+        // Para cada VetAlterj (j = 0..127)
+            // Calcula Hamming(BlC(k), BlAlterjC(k))
+            // Soma e guarda valores
+            // Guarda Max e Min
+
+    fclose(inputFile);
+
+}
+
 int main(int argc, char* argv[]) {
 
     // Lê parâmetros de entrada
@@ -675,7 +771,7 @@ int main(int argc, char* argv[]) {
         {
             case ENCRYPT:
             case DECRYPT:
-            case CALC_RANDOMNESS:
+            case CALC_ENTRYOPY:
                 mode = opt;
                 break;
             case ERASE_FILE:
@@ -709,7 +805,7 @@ int main(int argc, char* argv[]) {
     }
 
     // TODO: Valida parâmetros obrigatórios
-    
+
     // Valida senha e gera chave principal a partir da senha
     uint32_t key[4];
     if (!validatePassword(password, key)) {
@@ -725,7 +821,9 @@ int main(int argc, char* argv[]) {
         case DECRYPT:
             decryptFile(inputFileName, outputFileName, key);
             break;
-        case CALC_RANDOMNESS:
+        case CALC_ENTRYOPY:
+            calculateEntropy(inputFileName, key);
+            break;
         default:
             printf("Operação não implementada.\n");
             break;
