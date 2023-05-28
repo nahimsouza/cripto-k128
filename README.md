@@ -1,4 +1,4 @@
-# Encryption Algorithm K128
+# Algoritmo de Criptografia K128
 
 Algoritmo de Criptografia K128 implementado para a disciplina de Introdução à Criptografia (MAC5723 - IME-USP, 2023).
 
