@@ -179,7 +179,7 @@ uint32_t S4[256] = {
 };
 
 /**
- * @brief Realiza um XOR com 128 bits (array 4x32)
+ * @brief Realiza um XOR com entradas de 128 bits (array 4x32)
  *
  * @param[in] a Entrada a 128 bits (4x32)
  * @param[in] b Entrada b 128 bits (4x32)
@@ -192,38 +192,76 @@ void xor128(uint32_t a[4], uint32_t b[4], uint32_t out[4]) {
     out[3] = a[3] ^ b[3];
 }
 
+
+/**
+ * @brief Soma modulo 2^32 (32 bits)
+ *
+ * @param[in] a Entrada a 32 bits
+ * @param[in] b Entrada b 32 bits
+ * 
+ * @return out Saída de 32 bits
+ */
 uint32_t sum32bits(uint32_t a, uint32_t b) {
     uint64_t temp = (uint64_t) (a + b) % (uint64_t) pow(2, 32);
     uint32_t result = (uint32_t) (0xffffffff & temp);
     return result;
 }
 
+/**
+ * @brief Subtração modulo 2^32 (32 bits)
+ *
+ * @param[in] a Entrada a 32 bits
+ * @param[in] b Entrada b 32 bits
+ * 
+ * @return Saída de 32 bits
+ */
 uint32_t sub32bits(uint32_t a, uint32_t b) {
     uint64_t temp = (uint64_t) (a - b) % (uint64_t) pow(2, 32);
     uint32_t result = (uint32_t) (0xffffffff & temp);
     return result;
 }
 
+/**
+ * @brief Rotação de bits para a esquerda.
+ *
+ * @param[in] value Valor de 32 bits a ser rotacionado
+ * @param[in] numBits Número de bits rotacionados
+ * @param[in] size Comprimento em bits da variável rotacionada
+ * 
+ * @return Saída de 32 bits do valor rotacionado.
+ */
 uint32_t rotateLeft(uint32_t value, uint32_t numBits, uint32_t size) {
     uint32_t mask = 0xffffffff >> (SIZE_32 - size);
     return mask & ((value << (numBits % size)) | (value >> (size - (numBits % size))));
 }
 
+/**
+ * @brief Rotação de bits para a direita.
+ *
+ * @param[in] value Valor de 32 bits a ser rotacionado
+ * @param[in] numBits Número de bits rotacionados
+ * @param[in] size Comprimento em bits da variável rotacionada
+ * 
+ * @return Saída de 32 bits do valor rotacionado.
+ */
 uint32_t rotateRight(uint32_t value, uint32_t numBits, uint32_t size) {
     uint32_t mask = 0xffffffff >> (SIZE_32 - size);
     return mask & ( (value >> (numBits % size)) | (value << (size - (numBits % size))) );
 }
 
 /**
- * Calcula o valor Y
+ * @brief Calcula valor de f1()
  *
- * Entrada: X de 32 bits, K5 de 5 bits e K32 de 32 bits
- * Saída: Y de 32 bits
+ * @param[in] X Entrada de 32 bits.
+ * @param[in] KR5 Subchave KR5 (5 bits)
+ * @param[in] KM32 Subchave KM32 (32 bits)
+ * 
+ * @return Saída de 32 bits,
  */
-uint32_t f1(uint32_t X, uint32_t K5, uint32_t K32) {
+uint32_t f1(uint32_t X, uint32_t KR5, uint32_t KM32) {
 
     // Calcular I
-    uint32_t I = rotateLeft((K32 ^ X), K5, SIZE_32);
+    uint32_t I = rotateLeft((KM32 ^ X), KR5, SIZE_32);
 
     // Dividir I = I1||I2||I3||I4
     uint8_t I1 = (uint8_t)((0xff000000 & I) >> 24);
@@ -237,10 +275,19 @@ uint32_t f1(uint32_t X, uint32_t K5, uint32_t K32) {
     return Y;
 }
 
-uint32_t f2(uint32_t X, uint32_t K5, uint32_t K32) {
+/**
+ * @brief Calcula valor de f2()
+ *
+ * @param[in] X Entrada de 32 bits.
+ * @param[in] KR5 Subchave KR5 (5 bits)
+ * @param[in] KM32 Subchave KM32 (32 bits)
+ * 
+ * @return Saída de 32 bits,
+ */
+uint32_t f2(uint32_t X, uint32_t KR5, uint32_t KM32) {
 
     // Calcular I
-    uint32_t I = rotateLeft((K32 ^ X), K5, SIZE_32);
+    uint32_t I = rotateLeft((KM32 ^ X), KR5, SIZE_32);
 
     // Dividir I = I1||I2||I3||I4
     uint8_t I1 = (uint8_t)((0xff000000 & I) >> 24);
@@ -254,10 +301,19 @@ uint32_t f2(uint32_t X, uint32_t K5, uint32_t K32) {
     return Y;
 }
 
-uint32_t f3(uint32_t X, uint32_t K5, uint32_t K32) {
+/**
+ * @brief Calcula valor de f3()
+ *
+ * @param[in] X Entrada de 32 bits.
+ * @param[in] KR5 Subchave KR5 (5 bits)
+ * @param[in] KM32 Subchave KM32 (32 bits)
+ * 
+ * @return Saída de 32 bits,
+ */
+uint32_t f3(uint32_t X, uint32_t KR5, uint32_t KM32) {
 
     // Calcular I
-    uint32_t I = rotateLeft((K32 ^ X), K5, SIZE_32);
+    uint32_t I = rotateLeft((KM32 ^ X), KR5, SIZE_32);
 
     // Dividir I = I1||I2||I3||I4
     uint8_t I1 = (uint8_t)((0xff000000 & I) >> 24);
@@ -271,6 +327,13 @@ uint32_t f3(uint32_t X, uint32_t K5, uint32_t K32) {
     return Y;
 }
 
+/**
+ * @brief Contém subchaves KR5 e KM32 a partir da chave intermediária K(i).
+ *
+ * @param[in] intermediateKey Chave intermediária K(i) com 128 bits (4x32).
+ * @param[out] KR5 Subchave KR5(i) (5 bits)
+ * @param[out] KM32 Subchave KM32(i) (32 bits)
+ */
 void getSubkeys(uint32_t intermediateKey[4], uint32_t KR5[4], uint32_t KM32[4]) {
     uint32_t mask = 0xffffffff >> (SIZE_32 - SIZE_5);
 
@@ -392,6 +455,14 @@ void encryptBlock(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4]
     output[3] = B;
 }
 
+/**
+ * @brief Implementa uma iteração (round) do K128 para decriptografia.
+ *
+ * @param[in] input Entrada X (criptografada) de 128 bits (4x32).
+ * @param[in] round Inteiro referente à iteração atual (round).
+ * @param[in] intermediateKey Chave intermediaria K(i) de 128 bits (4x32).
+ * @param[out] output Saída Y (decriptografada) de 128 bits (4x32).
+ */
 void decryptBlock(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4], uint32_t output[4]) {
 
     // Divide entrada em 4 partes de 32 bits: A||B||C||D
@@ -417,6 +488,13 @@ void decryptBlock(uint32_t input[4], uint32_t round, uint32_t intermediateKey[4]
     output[3] = D;
 }
 
+/**
+ * @brief Gera arquivo criptografado a partir da entrada.
+ *
+ * @param[in] inputFileName Nome do arquivo de entrada.
+ * @param[in] outputFileName Nome do arquivo de saída.
+ * @param[in] key Chave principal, gerada a partir da senha.
+ */
 void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], uint32_t key[4]) {
 
     // Carrega arquivo de entrada.
@@ -498,6 +576,13 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
 
 }
 
+/**
+ * @brief Gera arquivo decriptografado a partir da entrada criptografada.
+ *
+ * @param[in] inputFileName Nome do arquivo de entrada.
+ * @param[in] outputFileName Nome do arquivo de saída.
+ * @param[in] key Chave principal, gerada a partir da senha.
+ */
 void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILENAME], uint32_t key[4]) {
 
     // Carrega arquivo de entrada.
@@ -618,6 +703,9 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
 
 }
 
+/**
+ * @brief Mostra texto de ajuda sobre uso do programa.
+ */
 void printUsage() {
     printf("Para criptografar arquivos:\n");
     printf("  ./k128.out -c -i <arquivo de entrada> -o <arquivo de saída> -p <senha> -a\n");
@@ -629,6 +717,14 @@ void printUsage() {
     printf("  ./k128.out -1 -i <arquivo de entrada> -p <senha>\n");
 }
 
+/**
+ * @brief Valida senha e gera chave principal K.
+ *
+ * @param[in] password Senha informada pelo usuário.
+ * @param[out] key Chave principal, gerada a partir da senha.
+ * 
+ * @return Booleano que indica se a senha é válida.
+ */
 uint8_t validatePassword(char password[MAX_PASSWORD], uint32_t key[4]) {
     if (strlen(password) < 8) {
         printf("A senha deve possuir pelo menos 8 caracteres.\n");
@@ -664,7 +760,17 @@ uint8_t validatePassword(char password[MAX_PASSWORD], uint32_t key[4]) {
     return TRUE;
 }
 
-void cbcEncrypt(uint32_t buffer[4], uint32_t intermediateKeys[4][4], uint32_t cbc[4], uint32_t encryptedInput[4]) {
+/**
+ * @brief Criptografa um bloco de 128 bits usando modo CBC.
+ *
+ * @param[in] buffer Entrada de 128 bits.
+ * @param[in] intermediateKeys Chaves intermediárias de 128 bits - K(i).
+ * @param[in,out] cbc Bloco usado para aplicar modo CBC.
+ * @param[out] encryptedInput Saída do bloco criptografado de 128 bits.
+ * 
+ * @return Booleano que indica se a senha é válida.
+ */
+void cbcEncrypt(uint32_t buffer[4], uint32_t intermediateKeys[NUM_ROUNDS][4], uint32_t cbc[4], uint32_t encryptedInput[4]) {
     // Aplica CBC
     xor128(cbc, buffer, buffer);
 
@@ -678,7 +784,14 @@ void cbcEncrypt(uint32_t buffer[4], uint32_t intermediateKeys[4][4], uint32_t cb
     memcpy(cbc, buffer, 16);
 }
 
-// Conta o numero de bits iguais a 1
+
+/**
+ * @brief Conta o número de bits iguais a 1.
+ *
+ * @param[in] n Entrada de 32 bits.
+ * 
+ * @return Número de bits iguais a 1 em n.
+ */
 uint32_t countBits(uint32_t n){
     uint32_t i;
     uint32_t counter = 0;
@@ -694,6 +807,14 @@ uint32_t countBits(uint32_t n){
     return counter;
 }
 
+/**
+ * @brief Calcula a distância de Hamming entre duas entradas de 128 bits (4x32)
+ *
+ * @param[in] input1 Entrada de 128 bits.
+ * @param[in] input2 Entrada de 128 bits.
+ * 
+ * @return Valor da distância de Hamming.
+ */
 uint32_t calculateHamming(uint32_t input1[4], uint32_t input2[4]) {
     uint32_t hammingValue = 0;
 
@@ -704,6 +825,12 @@ uint32_t calculateHamming(uint32_t input1[4], uint32_t input2[4]) {
     return hammingValue;
 }
 
+/**
+ * @brief Calcula a entropia da criptografia de 512 bits.
+ *
+ * @param[in] inputFileName Nome do arquivo de entrada.
+ * @param[in] key Chave principal K de 128 bits (gerada a partir da senha).
+ */
 void calculateEntropy(char inputFileName[MAX_FILENAME], uint32_t key[4]) {
 
     // Lê 4 blocos (512 bits) do arquivo original - VetEntra
@@ -737,8 +864,6 @@ void calculateEntropy(char inputFileName[MAX_FILENAME], uint32_t key[4]) {
 
         // Altera j-esimo bit
         changedBuffer[j][k][l] = buffer[k][l] ^ (1 << (j % 32));
-
-        printf("changed buffer %3d %2d %2d %08x\n", j, k, l, changedBuffer[j][k][l]);
     }
 
     // Gera chaves intermediárias para criptografia
@@ -785,8 +910,6 @@ void calculateEntropy(char inputFileName[MAX_FILENAME], uint32_t key[4]) {
     uint32_t maxHamming[4] = {0, 0, 0, 0};
 
     for (uint32_t j = 0; j < INPUT_SIZE_BITS; j++) {
-        printf("hamming %d %d\n", j, hammingValue[j]);
-
         // Guarda a soma/mínimo/máximo do bloco k
         uint32_t k = (j / 128);
         sumHamming[k] += hammingValue[j];
@@ -810,6 +933,11 @@ void calculateEntropy(char inputFileName[MAX_FILENAME], uint32_t key[4]) {
     fclose(inputFile);
 }
 
+/**
+ * @brief Escreve espaços em branco no arquivo e o deleta.
+ *
+ * @param[in] fileName Nome do arquivo.
+ */
 void eraseFile(char fileName[MAX_FILENAME]) {
     FILE* file = NULL;
     file = fopen(fileName, "w");
@@ -826,6 +954,7 @@ void eraseFile(char fileName[MAX_FILENAME]) {
     fwrite(&buffer, 1, fileSize, file);
     fclose(file);
 
+    // Remove arquivo.
     if(remove(fileName) != 0) {
         printf("Erro ao deletar arquivo: %s.\n", fileName);
     }
@@ -896,12 +1025,15 @@ int main(int argc, char* argv[]) {
     // Executa operação escolhida
     switch(mode) {
         case ENCRYPT:
+            printf("Criptografando %s...\n", inputFileName);
             encryptFile(inputFileName, outputFileName, key);
             break;
         case DECRYPT:
+            printf("Decriptografando %s...\n", inputFileName);
             decryptFile(inputFileName, outputFileName, key);
             break;
         case CALC_ENTRYOPY:
+            printf("Calculando entropia da criptografia do arquivo %s...\n", inputFileName);
             calculateEntropy(inputFileName, key);
             break;
         default:
