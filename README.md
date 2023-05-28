@@ -1,20 +1,23 @@
 # Encryption Algorithm K128
 
-Algorimtmo implementado para a disciplina de Introdução à Criptografia (IME-USP, 2023).
+Algoritmo de Criptografia K128 implementado para a disciplina de Introdução à Criptografia (MAC5723 - IME-USP, 2023).
 
 A descrição completa do algoritmo está no arquivo [ep-cripto.pdf](ep-cripto.pdf).
 
-## Para compilar:
-Executar o comando `make` para compilar e gerar o binário `k128.out`.
+### Para compilar:
 
-## Modo (1) Para criptografar arquivos:
+* Executar o comando `make` para compilar e gerar o binário `k128.out`.
 
-`./k128.out -c -i <arquivo de entrada> -o <arquivo de saída> -p <senha> -a`
+### Modos de utilização:
 
-## Modo (2) Para decriptografar arquivos:
+1. Para criptografar arquivos:
 
-`./k128.out -d -i <arquivo de entrada> -o <arquivo de saída> -p <senha>`
+    * `./k128.out -c -i <arquivo de entrada> -o <arquivo de saída> -p <senha> -a`
 
-## Modo (3) Para calcular aleatoriedade pelo método descrito abaixo, Seção 11, na página 8:
+2. Para decriptografar arquivos:
 
-`./k128.out -1 -i <arquivo de entrada> -p <senha>`
+    * `./k128.out -d -i <arquivo de entrada> -o <arquivo de saída> -p <senha>`
+
+3. Para calcular aleatoriedade - entropia:
+
+    * `./k128.out -1 -i <arquivo de entrada> -p <senha>`
