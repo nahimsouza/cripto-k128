@@ -14,6 +14,7 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <ctype.h>
+#include <limits.h>
 
 #define NUM_ROUNDS 12
 #define SIZE_5 5
@@ -448,13 +449,12 @@ void encryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
     // Limpa buffer antes de preencher, pois caso sejam lidos menos de 128 bits
     // o buffer automaticamente fica preenchido com 1's
     uint32_t buffer[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
-    uint64_t sizeRead = 0;
 
     // Bloco CBC - valor inicial
     uint32_t cbc[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
 
     // Lê e criptografa cada bloco do arquivo.
-    while (sizeRead = fread(buffer, 1, 16, inputFile)) {
+    while (fread(buffer, 1, 16, inputFile)) {
         // Aplica CBC
         xor128(cbc, buffer, buffer);
 
@@ -528,7 +528,6 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
 
     // Buffer de 128 bits que será lido do arquivo
     uint32_t buffer[4] = {0, 0, 0, 0};
-    uint64_t sizeRead = 0;
 
     // Número de blocos de 128 bits
     uint64_t numberOfBlocks = fileSize / 16;
@@ -620,7 +619,14 @@ void decryptFile(char inputFileName[MAX_FILENAME], char outputFileName[MAX_FILEN
 }
 
 void printUsage() {
+    printf("Para criptografar arquivos:\n");
+    printf("  ./k128.out -c -i <arquivo de entrada> -o <arquivo de saída> -p <senha> -a\n");
 
+    printf("Para decriptografar arquivos:\n");
+    printf("  ./k128.out -d -i <arquivo de entrada> -o <arquivo de saída> -p <senha>\n");
+
+    printf("Para calcular aleatoriedade - entropia:\n");
+    printf("  ./k128.out -1 -i <arquivo de entrada> -p <senha>\n");
 }
 
 uint8_t validatePassword(char password[MAX_PASSWORD], uint32_t key[4]) {
@@ -670,6 +676,32 @@ void cbcEncrypt(uint32_t buffer[4], uint32_t intermediateKeys[4][4], uint32_t cb
 
     // Copia saída para CBC, para ser usada no próximo bloco
     memcpy(cbc, buffer, 16);
+}
+
+// Conta o numero de bits iguais a 1
+uint32_t countBits(uint32_t n){
+    uint32_t i;
+    uint32_t counter = 0;
+
+    i = 1UL << (sizeof(n) * CHAR_BIT - 1);
+
+    while (i > 0) {
+        if (n & i)
+            counter++;
+        i >>= 1;
+    }
+
+    return counter;
+}
+
+uint32_t calculateHamming(uint32_t input1[4], uint32_t input2[4]) {
+    uint32_t hammingValue = 0;
+
+    for (uint32_t i = 0; i < 4; i++) {
+        hammingValue += countBits(input1[i] ^ input2[i]);
+    }
+
+    return hammingValue;
 }
 
 void calculateEntropy(char inputFileName[MAX_FILENAME], uint32_t key[4]) {
@@ -729,7 +761,6 @@ void calculateEntropy(char inputFileName[MAX_FILENAME], uint32_t key[4]) {
 
     // Criptografa cada um dos 512 VetAlterj
     for (uint32_t j = 0; j < INPUT_SIZE_BITS; j++) {
-
         // Reinicializa o valor do CBC
         cbc[0] = cbc[1] = cbc[2] = cbc[3] = 0xffffffff;
 
@@ -740,14 +771,64 @@ void calculateEntropy(char inputFileName[MAX_FILENAME], uint32_t key[4]) {
         }
     }
 
-    // Para cada bloco k de 128 bits (4 blocos)
-        // Para cada VetAlterj (j = 0..127)
-            // Calcula Hamming(BlC(k), BlAlterjC(k))
-            // Soma e guarda valores
-            // Guarda Max e Min
+    // Guarda os valores da diferença de Hamming - 512 = 4 x 128
+    uint32_t hammingValue[512];
+    for (uint32_t j = 0; j < INPUT_SIZE_BITS; j++) {
+        uint32_t k = (j / 128); // 0..3 (4 blocos de 128 bits)
 
+        // Calcula Hamming(BlC(k), BlAlterjC(k))
+        hammingValue[j] = calculateHamming(encryptedInput[k], encryptedChangedBuffer[j][k]);
+    }
+
+    uint32_t sumHamming[4] = {0, 0, 0, 0};
+    uint32_t minHamming[4] = {0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff};
+    uint32_t maxHamming[4] = {0, 0, 0, 0};
+
+    for (uint32_t j = 0; j < INPUT_SIZE_BITS; j++) {
+        printf("hamming %d %d\n", j, hammingValue[j]);
+
+        // Guarda a soma/mínimo/máximo do bloco k
+        uint32_t k = (j / 128);
+        sumHamming[k] += hammingValue[j];
+        minHamming[k] = hammingValue[j] < minHamming[k] ? hammingValue[j] : minHamming[k];
+        maxHamming[k] = hammingValue[j] > maxHamming[k] ? hammingValue[j] : maxHamming[k];
+    }
+
+    // Soma cumulativa - SomaH(k).
+    sumHamming[1] += sumHamming[0];
+    sumHamming[2] += sumHamming[1];
+    sumHamming[3] += sumHamming[2];
+
+    // Exibe resultados:
+    printf("Entropia (512 bits):\n");
+    for (uint32_t k = 0; k < 4; k++) {
+        printf("  > SomaH(%d) = %5d, MinH(%d) = %d, MaxH(%d) = %d, MediaH(%d) = %d\n",
+            k + 1, sumHamming[k], k + 1, minHamming[k], k + 1, maxHamming[k], k + 1, sumHamming[k] / ((k + 1) * 128));
+    }
+
+    // Fecha arquivo de entrada.
     fclose(inputFile);
+}
 
+void eraseFile(char fileName[MAX_FILENAME]) {
+    FILE* file = NULL;
+    file = fopen(fileName, "w");
+    if (file == NULL) {
+        printf("Erro ao abrir arquivo: %s.\n", fileName);
+        return;
+    }
+
+    // Lê tamanho do arquivo a partir da posição do cursor.
+    fseek(file, 0, SEEK_END);
+    uint64_t fileSize = ftell(file);
+
+    uint8_t buffer = '\0';
+    fwrite(&buffer, 1, fileSize, file);
+    fclose(file);
+
+    if(remove(fileName) != 0) {
+        printf("Erro ao deletar arquivo: %s.\n", fileName);
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -763,6 +844,7 @@ int main(int argc, char* argv[]) {
     if (argc == 1) {
         printf("Erro: faltam argumentos.\n");
         printUsage();
+        return 0;
     }
 
     while((opt = getopt(argc, argv, ":cd1i:o:p:a")) != -1)
@@ -804,8 +886,6 @@ int main(int argc, char* argv[]) {
         printf("\n");
     }
 
-    // TODO: Valida parâmetros obrigatórios
-
     // Valida senha e gera chave principal a partir da senha
     uint32_t key[4];
     if (!validatePassword(password, key)) {
@@ -829,10 +909,10 @@ int main(int argc, char* argv[]) {
             break;
     }
 
-    // TODO: Sobrescreve e deleta arquivo original se solicitado
-    // if (erase) {
-    //     eraseFile(inputFileName);
-    // }
+    // Sobrescreve e deleta arquivo original se solicitado
+    if (erase) {
+        eraseFile(inputFileName);
+    }
 
     return 0;
 }
