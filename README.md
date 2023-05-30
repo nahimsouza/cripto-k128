@@ -23,3 +23,7 @@ A descrição completa do algoritmo está no arquivo [ep-cripto.pdf](ep-cripto.p
     * `./k128.out -1 -i <arquivo de entrada> -p <senha>`
 
 Nota: O parâmetro `-a` é opcional, caso seja passado, o arquivo de entrada é sobrescrito e apagado.
+
+### Problemas conhecidos:
+
+* Quando uma senha incorreta é usada na decriptografia, o programa gera um arquivo de saída inválido e retorna "Segmentation Fault".
